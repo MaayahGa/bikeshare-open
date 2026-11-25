@@ -27,7 +27,7 @@ The baselines do not use the feature set, so their rows do not change. The
 ## Headline finding
 
 The naive evaluation, with `casual` and `registered` left in the features
-(`python -m src.leakage_demo`), gives test R^2 = LEAKY_R2 and is invalid: `casual + registered == cnt`
+(`python -m src.leakage_demo`), gives test R^2 = 1.000000 and is invalid: `casual + registered == cnt`
 exactly, so the model learns addition. Under a temporal split with those columns
 excluded, the mean baseline scores -2.14 on test because ridership grew about 65%
 from 2011 to 2012. Ridge reaches 0.583, against 0.510 for persistence ("predict
