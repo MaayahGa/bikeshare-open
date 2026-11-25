@@ -505,3 +505,95 @@ FAILED tests/test_contract.py::test_raw_file_is_unmodified - ValueError: bike...
 **Restored** with `git checkout data/raw/bike_daily.csv`: the sha256 is back to
 `a6bed1577f6e4de5…`, `make data` prints `OK ingest: 728 rows`, and `make test`
 gives 18 passed.
+
+## Fault 5 (skill test): cnt_lag_1 shift(1) changed to shift(0)
+
+Run as a test of the `/seed-fault` skill, invoked as
+`/seed-fault change cnt_lag_1 from shift(1) to shift(0)`. The agent ran all six
+steps on its own in 9 minutes. I checked its write-up against the capture files
+and replaced its excerpts with the full captured output.
+
+**Change** (seeded by the agent):
+
+```diff
+diff --git a/src/features.py b/src/features.py
+index 02e93ca..d6c0e7d 100644
+--- a/src/features.py
++++ b/src/features.py
+@@ -71,5 +71,5 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
+     # Lagged target: past values only. shift(1) is the whole ballgame;
+     # without it, cnt_roll_7 would contain today's count. -----------------
+     # If you add a longer lag, raise LAG_WARMUP in src/config.py.
+-    out["cnt_lag_1"] = out[TARGET].shift(1)
++    out["cnt_lag_1"] = out[TARGET].shift(0)
+     out["cnt_lag_2"] = out[TARGET].shift(2)
+     out["cnt_lag_7"] = out[TARGET].shift(LAG_WARMUP)
+```
+
+**Caught by:** `tests/test_leakage.py::test_lag_is_not_the_target` and
+`tests/test_leakage.py::test_lags_are_true_calendar_lags`. The PostToolUse hook
+fired immediately after the edit landed. Using `shift(0)` makes `cnt_lag_1` equal
+to `cnt` exactly, which is temporal leakage — the feature becomes the target.
+
+**Red test output** (`make test`):
+
+```
+E                 Obtained: 1263.0
+E                 Expected: 1321.0 ± 0.001321
+
+tests/test_leakage.py:41: AssertionError
+__________________________ test_lag_is_not_the_target __________________________
+
+feats =         dteday  instant  season  ...  cnt_lag_2 cnt_lag_7   cnt_roll_7
+0   2011-01-10     10.0  WINTER  ...      959.0...    1787.0  1530.142857
+713 2012-12-31    731.0  WINTER  ...     1341.0     920.0  1531.428571
+
+[714 rows x 29 columns]
+
+    def test_lag_is_not_the_target(feats):
+>       assert not (feats.cnt_lag_1 == feats[TARGET]).all()
+E       assert not np.True_
+E        +  where np.True_ = all()
+E        +    where all = 0      1321.0...dtype: float64 == 0      1321.0...dtype: float64
+E             
+E             Use -v to get more diff.all
+
+tests/test_leakage.py:47: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_leakage.py::test_lags_are_true_calendar_lags - AssertionErr...
+FAILED tests/test_leakage.py::test_lag_is_not_the_target - assert not np.True_
+2 failed, 16 passed in 1.65s
+```
+
+**Hook stderr** (exit code 2):
+
+```
+Leakage tests failed after editing /Users/gabrielmaayah/Desktop/DSC180AB/bikeshare-open/src/features.py:
+
+feats =         dteday  instant  season  ...  cnt_lag_2 cnt_lag_7   cnt_roll_7
+0   2011-01-10     10.0  WINTER  ...      959.0...    1787.0  1530.142857
+713 2012-12-31    731.0  WINTER  ...     1341.0     920.0  1531.428571
+
+[714 rows x 29 columns]
+
+    def test_lag_is_not_the_target(feats):
+>       assert not (feats.cnt_lag_1 == feats[TARGET]).all()
+E       assert not np.True_
+E        +  where np.True_ = all()
+E        +    where all = 0      1321.0...dtype: float64 == 0      1321.0...dtype: float64
+E             
+E             Use -v to get more diff.all
+
+tests/test_leakage.py:47: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_leakage.py::test_lags_are_true_calendar_lags - AssertionErr...
+FAILED tests/test_leakage.py::test_lag_is_not_the_target - assert not np.True_
+2 failed, 7 passed in 0.29s
+hook exit code: 2
+```
+
+**Prediction held:** Yes — exactly as predicted, `tests/test_leakage.py` caught the
+fault immediately when seeded, and the PostToolUse hook fired with exit code 2.
+
+**Restored** with `git checkout -- src/`: `make test` returned 18 passed.
+
