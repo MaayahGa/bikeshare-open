@@ -123,3 +123,15 @@ Everything else is the course starter.
 - a false claim that no permission rule had stopped it in Fault 4, contradicted by the tool output.
 
 In each case, a test result or printed output disagreed with what the agent said.
+
+**Automated audit of this repo** (`python agent/audit.py . --out reports/audit.jsonl`,
+same local model). It reported no leakage, a valid temporal split and both
+baselines present, but marked the repo not reproducible: it said the README does
+not document how to reproduce the results or that seeds are fixed. I think that
+finding is wrong. `README.md` documents `make all` ("writes reports/metrics.json"),
+the only stochastic model is seeded (`HistGradientBoostingRegressor(random_state=0)`),
+ridge is deterministic, and every version is pinned in `requirements.txt`. I
+checked it the way the graders will: a fresh `git clone` into `/tmp`, a new venv,
+`pip install -r requirements.txt`, `make all`, `make test` (18 passed). The
+regenerated `reports/metrics.json` was byte-identical to the committed one. The
+auditor read documentation and inferred; the clean-checkout run is the evidence.
