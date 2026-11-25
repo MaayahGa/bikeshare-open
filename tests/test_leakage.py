@@ -77,3 +77,12 @@ def test_cnt_lag_2_is_true_calendar_lag(feats):
     expected = raw.loc[d - pd.Timedelta(days=2), TARGET]
     assert row.loc[d, "cnt_lag_2"] == pytest.approx(expected)
 
+
+def test_weather_encoder_rejects_unknown_labels():
+    """An unseen weather label must raise, not become NaN. Every label in the
+    current data is valid, so without this test nothing exercises the guard:
+    deleting the raise in encode_weather leaves every other test green, and a
+    new label would turn into NaN and be dropped by dropna() without warning."""
+    from src.features import encode_weather
+    with pytest.raises(ValueError, match="unmapped weather labels"):
+        encode_weather(pd.Series(["GOOD", "SNOW"]))
