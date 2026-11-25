@@ -56,3 +56,14 @@ def test_persistence_baseline_is_reported():
     """The baseline that matters for a lag-driven model is 'yesterday again'.
     It must be in the comparison, whatever its score."""
     assert "baseline_persistence" in MODELS
+
+
+def test_every_raw_column_is_classified():
+    """Every column in the raw CSV must be classified in src/config.py.
+    feature_columns() is a denylist, so an unclassified numeric column
+    would otherwise enter the model silently."""
+    from src.config import FORBIDDEN, RAW, RAW_FEATURE_COLS, SOURCE_COLS
+    cols = set(pd.read_csv(RAW, nrows=0).columns)
+    known = FORBIDDEN | RAW_FEATURE_COLS | SOURCE_COLS | {"dteday"}
+    unclassified = cols - known
+    assert not unclassified, f"unclassified raw columns: {sorted(unclassified)}"
