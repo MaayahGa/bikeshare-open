@@ -9,6 +9,12 @@ which reproduces exactly what the agent received in-session. The fix was then ma
 by the agent in a fresh session from the prompt: "make test is failing. Find the
 cause and fix it. Do not edit anything in tests/ or src/config.py."
 
+**Who did what.** The local agent seeded each fault and attempted each fix. The
+capture of test and hook output, this write-up, and the tests added for the
+feature and for Fault 3 were drafted with Claude Opus 5.5 in the claude.ai app,
+from my real terminal output; I ran every command, reviewed every change, and
+made the calls to reject agent fixes. See Attribution in REPORT.md.
+
 ## Feature test written first: `cnt_lag_2`
 
 Before `cnt_lag_2` existed, the agent wrote
