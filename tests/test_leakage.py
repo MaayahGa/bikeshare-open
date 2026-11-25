@@ -64,3 +64,16 @@ def test_no_missing_values(feats):
 def test_dates_are_sorted_and_unique(feats):
     assert feats.dteday.is_monotonic_increasing
     assert feats.dteday.is_unique
+
+
+def test_cnt_lag_2_is_true_calendar_lag(feats):
+    """cnt_lag_2 on 2012-03-15 must equal raw cnt on 2012-03-13,
+    two calendar days earlier, computed from the raw file, not the builder."""
+
+    raw = load_raw().set_index("dteday")
+    d = pd.Timestamp("2012-03-15")
+    row = feats.set_index("dteday")
+    assert d in row.index, "2012-03-15 missing from feature table"
+    expected = raw.loc[d - pd.Timedelta(days=2), TARGET]
+    assert row.loc[d, "cnt_lag_2"] == pytest.approx(expected)
+
