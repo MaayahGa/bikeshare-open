@@ -67,3 +67,11 @@ def test_every_raw_column_is_classified():
     known = FORBIDDEN | RAW_FEATURE_COLS | SOURCE_COLS | {"dteday"}
     unclassified = cols - known
     assert not unclassified, f"unclassified raw columns: {sorted(unclassified)}"
+
+
+def test_raw_file_is_unmodified():
+    """Raw data is immutable. The PostToolUse hook only sees Edit/Write on src/,
+    and permission rules only bind tool calls they recognise, so a raw file
+    changed from Bash (or any other route) is caught here, by its bytes."""
+    from src.ingest import verify_raw
+    verify_raw()

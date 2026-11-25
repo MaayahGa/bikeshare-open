@@ -20,6 +20,12 @@ DATA_URL = (
     "interpretable-ml-book/master/data/bike.csv"
 )
 
+# sha256 of the committed raw file. Raw data is immutable: any change, by any
+# route (an Edit, a shell cp, a python one-liner, a re-download of a mirror that
+# moved), must fail loudly. Permission rules only bind recognised tool calls;
+# this binds the bytes. Checked by `make data` and tests/test_contract.py.
+RAW_SHA256 = "a6bed1577f6e4de56dcfae6d8315985073cc0ad3446c8c99ed60c86a0b5ad9dc"
+
 TARGET = "cnt"
 
 # --- Three reasons a column is kept out of the feature set --------------
