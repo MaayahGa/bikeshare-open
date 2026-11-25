@@ -15,10 +15,11 @@ reason it fails is the headline result.
 
 Run: python -m src.train
 """
+import argparse
 import json
 
 import pandas as pd
-from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.base import BaseEstimator, RegressorMixin, clone
 from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.linear_model import Ridge
@@ -45,6 +46,29 @@ class PersistenceBaseline(BaseEstimator, RegressorMixin):
         return X[self.column].to_numpy(dtype=float)
 
 
+
+class RatioTarget(BaseEstimator, RegressorMixin):
+    """Exercise 4 only, off by default (`--target ratio`).
+
+    Fit the wrapped model on cnt / cnt_roll_7 (today relative to the past
+    week) and multiply its prediction back by cnt_roll_7. The ratio sits
+    near 1 in both 2011 and 2012, so a tree no longer has to predict counts
+    above anything it saw in training. cnt_roll_7 is shifted before it is
+    rolled, so it is known at prediction time.
+    """
+
+    def __init__(self, model, scale_col: str = "cnt_roll_7"):
+        self.model = model
+        self.scale_col = scale_col
+
+    def fit(self, X, y):
+        self.model_ = clone(self.model).fit(X, y / X[self.scale_col])
+        return self
+
+    def predict(self, X):
+        return self.model_.predict(X) * X[self.scale_col].to_numpy(dtype=float)
+
+
 MODELS = {
     "baseline_mean": DummyRegressor(strategy="mean"),
     "baseline_persistence": PersistenceBaseline("cnt_lag_1"),
@@ -62,7 +86,7 @@ def temporal_split(df: pd.DataFrame):
     return train, valid, test
 
 
-def fit_and_score() -> dict:
+def fit_and_score(target: str = "raw", show_test: bool = True) -> dict:
     df = pd.read_parquet(PROCESSED)
     cols = feature_columns(df)
     train, valid, test = temporal_split(df)
@@ -74,20 +98,41 @@ def fit_and_score() -> dict:
         "n_valid": len(valid),
         "n_test": len(test),
     }
-    for name, model in MODELS.items():
+    models = dict(MODELS)
+    if target == "ratio":
+        # Baselines stay as they are; only the two learned models change.
+        models["ridge"] = RatioTarget(MODELS["ridge"])
+        models["hgb"] = RatioTarget(MODELS["hgb"])
+    results["target"] = target
+    splits = [("valid", valid)] + ([("test", test)] if show_test else [])
+    for name, model in models.items():
         model.fit(train[cols], train[TARGET])
         results[name] = {
             split: {
                 "r2": round(float(r2_score(part[TARGET], model.predict(part[cols]))), 4),
                 "mae": round(float(mean_absolute_error(part[TARGET], model.predict(part[cols]))), 1),
             }
-            for split, part in [("valid", valid), ("test", test)]
+            for split, part in splits
         }
     return results
 
 
 if __name__ == "__main__":
-    res = fit_and_score()
-    METRICS.parent.mkdir(parents=True, exist_ok=True)
-    METRICS.write_text(json.dumps(res, indent=2))
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--target", choices=["raw", "ratio"], default="raw",
+                    help="ratio: Exercise 4 transform. Never written to metrics.json.")
+    ap.add_argument("--show-test", action="store_true",
+                    help="with --target ratio, also score the test set (do this once).")
+    args = ap.parse_args()
+
+    if args.target == "raw":
+        res = fit_and_score()
+        res.pop("target")
+        METRICS.parent.mkdir(parents=True, exist_ok=True)
+        METRICS.write_text(json.dumps(res, indent=2))
+    else:
+        res = fit_and_score("ratio", show_test=args.show_test)
+        out = METRICS.with_name("exercise4_ratio.json")
+        out.write_text(json.dumps(res, indent=2))
+        print(f"(Exercise 4; reports/metrics.json untouched) -> {out.name}")
     print(json.dumps({k: v for k, v in res.items() if k != "features"}, indent=2))
