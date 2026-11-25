@@ -91,8 +91,98 @@ hook exit code: 2
 
 **Agent fix:** one prompt, no follow-up needed. The agent found the appended
 `+ ["casual"]` on line 85, removed it, ran the tests once and reported them green
-(3 min 27 s wall clock). No permission prompt appeared, including for the
-edit, even though the status bar showed manual mode; `make` and `python -m pytest`
-are pre-approved in `settings.json`, but the edit was expected to ask.
+(3 min 27 s wall clock). No permission prompts appeared: new sessions start
+in Claude Code's default auto mode, which ran the edit and the test run without
+asking. Faults 2 and 3 were also fixed in auto mode, so they are comparable.
 After the fix, `make test` returns 16 passed and `git status` shows no change to
 `src/`.
+
+## Fault 2: `.shift(1)` deleted from `cnt_roll_7`
+
+**Change** (seeded by the agent on request):
+
+```diff
+diff --git a/src/features.py b/src/features.py
+index 02e93ca..a03a88d 100644
+--- a/src/features.py
++++ b/src/features.py
+@@ -74,7 +74,7 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
+     out["cnt_lag_1"] = out[TARGET].shift(1)
+     out["cnt_lag_2"] = out[TARGET].shift(2)
+     out["cnt_lag_7"] = out[TARGET].shift(LAG_WARMUP)
+-    out["cnt_roll_7"] = out[TARGET].shift(1).rolling(LAG_WARMUP).mean()
++    out["cnt_roll_7"] = out[TARGET].rolling(LAG_WARMUP).mean()
+ 
+     return out.dropna().reset_index(drop=True)
+```
+
+**Caught by:** `tests/test_leakage.py::test_rolling_mean_excludes_today`. The hook
+fired in the seeding session as soon as the edit landed. Without the shift, the
+7-day mean on the checked date includes that day's own count (4389.0 instead of
+the mean of the seven prior days, 4414.86), so the feature now contains the target.
+
+**Red test output** (`make test`):
+
+```
+feats =         dteday  instant  season  ...  cnt_lag_2 cnt_lag_7   cnt_roll_7
+0   2011-01-10     10.0  WINTER  ...      959.0...    1787.0  1531.428571
+713 2012-12-31    731.0  WINTER  ...     1341.0     920.0  1789.857143
+
+[714 rows x 29 columns]
+
+    def test_rolling_mean_excludes_today(feats):
+        """cnt_roll_7 must be the mean of the 7 calendar days *before* today."""
+        by_date = feats.set_index("dteday")[TARGET]
+        date = feats.dteday.iloc[200]
+        window = [date - pd.Timedelta(days=k) for k in range(1, 8)]
+        if all(d in by_date.index for d in window):
+            expected = sum(by_date[d] for d in window) / 7
+>           assert feats.set_index("dteday").cnt_roll_7[date] == pytest.approx(expected)
+E           assert np.float64(4389.0) == 4414.857142857143 ± 0.00441486
+E             
+E             comparison failed
+E             Obtained: 4389.0
+E             Expected: 4414.857142857143 ± 0.00441486
+
+tests/test_leakage.py:57: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_leakage.py::test_rolling_mean_excludes_today - assert np.fl...
+1 failed, 15 passed in 1.33s
+```
+
+**Hook stderr** (exit code 2):
+
+```
+Leakage tests failed after editing /Users/gabrielmaayah/Desktop/DSC180AB/bikeshare-open/src/features.py:
+[714 rows x 29 columns]
+
+    def test_rolling_mean_excludes_today(feats):
+        """cnt_roll_7 must be the mean of the 7 calendar days *before* today."""
+        by_date = feats.set_index("dteday")[TARGET]
+        date = feats.dteday.iloc[200]
+        window = [date - pd.Timedelta(days=k) for k in range(1, 8)]
+        if all(d in by_date.index for d in window):
+            expected = sum(by_date[d] for d in window) / 7
+>           assert feats.set_index("dteday").cnt_roll_7[date] == pytest.approx(expected)
+E           assert np.float64(4389.0) == 4414.857142857143 ± 0.00441486
+E             
+E             comparison failed
+E             Obtained: 4389.0
+E             Expected: 4414.857142857143 ± 0.00441486
+
+tests/test_leakage.py:57: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_leakage.py::test_rolling_mean_excludes_today - assert np.fl...
+1 failed, 7 passed in 0.28s
+hook exit code: 2
+```
+
+**Agent fix:** one prompt, no follow-up needed, 4 min 45 s. The agent did not
+restore the original line. It wrote
+`out[TARGET].rolling(LAG_WARMUP).mean().shift(1)`, which rolls first and shifts
+after. That form gives the same values here (the mean of days d-7 to d-1) and the
+tests went green, but it breaks the CLAUDE.md rule "must `.shift(1)` before it
+aggregates", which exists so the order is obvious on review. I rejected the agent's
+version and restored the committed line with `git checkout src/features.py`; tests
+green, 16 passed. Lesson: a passing test proves the values, not that the agent
+followed the project's conventions.
