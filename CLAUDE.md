@@ -20,9 +20,21 @@ rides) from calendar, weather, and lagged-demand features.
 - Any new lag or rolling feature must be built on a gap-free calendar
   index (`src.features.reindex_to_calendar`) and must `.shift(1)` before
   it aggregates. Add a test for it in `tests/test_leakage.py`.
+- Every raw column must be classified in `src/config.py` (`FORBIDDEN`,
+  `RAW_FEATURE_COLS` or `SOURCE_COLS`). `feature_columns()` is a denylist, so an
+  unclassified numeric column would reach the model; `make test` fails on one.
+- `data/raw/` is immutable by any route, not just Edit: its sha256 is pinned as
+  `RAW_SHA256` and checked by `make data` and `make test`. If it fails, restore
+  with `git checkout -- data/raw/`; never "fix" the hash.
 - Report the mean baseline **and** the persistence baseline (yesterday's
   count) alongside every model. A negative R^2 is a finding, not a bug
   to hide.
+
+## Skills
+- `/new-feature <name>` - add a feature, test first. Its `!python -c` line is
+  blocked by permissions; follow its SKILL.md steps by hand.
+- `/seed-fault <description>` - break one thing on purpose, capture what
+  catches it, restore, write it up in `docs/SEEDED_FAULTS.md`.
 
 ## Style
 - Standard library, pandas, scikit-learn only. No new dependencies
